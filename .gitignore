@@ -1,0 +1,10 @@
+node_modules
+dist
+.vite
+*.log
+*.mp4
+.agents/
+.codex/
+test-results/
+playwright-report/
+screenshots/
