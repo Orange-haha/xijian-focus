@@ -185,8 +185,28 @@ function useFocusTimer(onComplete) {
   })
   const reset = () => setTimer((current) => ({ ...current, remaining: current.duration, status: 'idle', endAt: null }))
   const setPreset = (minutes) => setTimer({ duration: minutes * 60, remaining: minutes * 60, status: 'idle', endAt: null })
+  const adjustDuration = (minutes) => setTimer((current) => {
+    const duration = Math.min(240, Math.max(1, minutes)) * 60
+    const difference = duration - current.duration
+    if (difference === 0) return current
+    if (current.status === 'idle' || current.status === 'complete') {
+      return { duration, remaining: duration, status: 'idle', endAt: null }
+    }
+    const now = Date.now()
+    const remaining = current.status === 'running'
+      ? Math.max(0, Math.ceil((current.endAt - now) / 1000))
+      : current.remaining
+    const nextRemaining = Math.min(duration, Math.max(0, remaining + difference))
+    if (nextRemaining === 0) return { duration, remaining: 0, status: 'complete', endAt: null }
+    return {
+      duration,
+      remaining: nextRemaining,
+      status: current.status,
+      endAt: current.status === 'running' ? now + nextRemaining * 1000 : null,
+    }
+  })
 
-  return { timer, start, pause, reset, setPreset }
+  return { timer, start, pause, reset, setPreset, adjustDuration }
 }
 
 function SoundPanel({ tracks, setTracks, collapsed, setCollapsed, muted, setMuted, onError }) {
@@ -260,16 +280,26 @@ function SoundPanel({ tracks, setTracks, collapsed, setCollapsed, muted, setMute
   )
 }
 
-function TimerCard({ timer, start, pause, reset, setPreset, compact = false }) {
+function TimerCard({ timer, start, pause, reset, setPreset, adjustDuration, compact = false }) {
   const [showCustom, setShowCustom] = useState(false)
   const [customMinutes, setCustomMinutes] = useState('')
   const [customError, setCustomError] = useState('')
   const progress = timer.duration ? timer.remaining / timer.duration : 0
   const circumference = 2 * Math.PI * 76
+  const validDraft = /^\d+$/.test(customMinutes) && Number(customMinutes) >= 1 && Number(customMinutes) <= 240
+  const stepBase = validDraft ? Number(customMinutes) : Math.round(timer.duration / 60)
+  const stepDuration = (change) => {
+    const minutes = Math.min(240, Math.max(1, stepBase + change))
+    adjustDuration(minutes)
+    setCustomMinutes(String(minutes))
+    setCustomError('')
+  }
   const chooseDuration = (minutes) => {
     if ((timer.status === 'running' || timer.status === 'paused') &&
       !window.confirm('修改专注时长会重置当前计时，确定继续吗？')) return false
     setPreset(minutes)
+    setCustomMinutes(String(minutes))
+    setShowCustom(false)
     return true
   }
   const submitCustom = (event) => {
@@ -315,16 +345,23 @@ function TimerCard({ timer, start, pause, reset, setPreset, compact = false }) {
       </div>
       {showCustom && (
         <form id="custom-duration" className="custom-duration" onSubmit={submitCustom} noValidate>
-          <label htmlFor="custom-minutes">专注时长</label>
-          <div className="custom-duration-controls">
-            <input id="custom-minutes" type="number" min="1" max="240" step="1" inputMode="numeric" value={customMinutes} onChange={(event) => {
-              setCustomMinutes(event.target.value)
-              setCustomError('')
-            }} aria-invalid={Boolean(customError)} aria-describedby={customError ? 'custom-duration-error' : 'custom-duration-hint'} />
-            <span>分钟</span>
-            <button type="submit">设置</button>
+          <div className="custom-duration-heading">
+            <label htmlFor="custom-minutes">自定义时长</label>
+            <span>1–240 分钟</span>
           </div>
-          <small id={customError ? 'custom-duration-error' : 'custom-duration-hint'} className={customError ? 'custom-duration-error' : ''}>{customError || '可设置 1–240 分钟'}</small>
+          <div className="duration-stepper">
+            <button type="button" onClick={() => stepDuration(-5)} disabled={stepBase <= 1} aria-label="减少 5 分钟">−5</button>
+            <div className="duration-input-wrap">
+              <input id="custom-minutes" type="text" inputMode="numeric" pattern="[0-9]*" value={customMinutes} onChange={(event) => {
+                setCustomMinutes(event.target.value)
+                setCustomError('')
+              }} aria-invalid={Boolean(customError)} aria-describedby={customError ? 'custom-duration-error' : 'custom-duration-hint'} />
+              <span>分钟</span>
+            </div>
+            <button type="button" onClick={() => stepDuration(5)} disabled={stepBase >= 240} aria-label="增加 5 分钟">+5</button>
+          </div>
+          <button className="apply-duration" type="submit">应用时长</button>
+          <small id={customError ? 'custom-duration-error' : 'custom-duration-hint'} className={customError ? 'custom-duration-error' : ''}>{customError || '±5 分钟立即生效，输入时长后点应用'}</small>
         </form>
       )}
       <div className="timer-actions">
