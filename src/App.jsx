@@ -261,8 +261,29 @@ function SoundPanel({ tracks, setTracks, collapsed, setCollapsed, muted, setMute
 }
 
 function TimerCard({ timer, start, pause, reset, setPreset, compact = false }) {
+  const [showCustom, setShowCustom] = useState(false)
+  const [customMinutes, setCustomMinutes] = useState('')
+  const [customError, setCustomError] = useState('')
   const progress = timer.duration ? timer.remaining / timer.duration : 0
   const circumference = 2 * Math.PI * 76
+  const chooseDuration = (minutes) => {
+    if ((timer.status === 'running' || timer.status === 'paused') &&
+      !window.confirm('修改专注时长会重置当前计时，确定继续吗？')) return false
+    setPreset(minutes)
+    return true
+  }
+  const submitCustom = (event) => {
+    event.preventDefault()
+    const value = customMinutes.trim()
+    if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 240) {
+      setCustomError('请输入 1–240 之间的整数分钟')
+      return
+    }
+    if (chooseDuration(Number(value))) {
+      setShowCustom(false)
+      setCustomError('')
+    }
+  }
   return (
     <section className={`timer-card glass ${compact ? 'compact' : ''} ${timer.status === 'running' ? 'is-running' : ''}`} aria-label="专注计时器">
       <div className="timer-label"><Sparkles size={14} /> {timer.status === 'running' ? '正在专注' : timer.status === 'paused' ? '稍作停顿' : timer.status === 'complete' ? '本轮完成' : '准备专注'}</div>
@@ -284,9 +305,28 @@ function TimerCard({ timer, start, pause, reset, setPreset, compact = false }) {
       </div>
       <div className="presets" aria-label="快捷时长">
         {[25, 50, 90].map((minutes) => (
-          <button key={minutes} onClick={() => setPreset(minutes)} className={timer.duration === minutes * 60 ? 'active' : ''}>{minutes}</button>
+          <button key={minutes} type="button" onClick={() => chooseDuration(minutes)} className={timer.duration === minutes * 60 ? 'active' : ''} aria-pressed={timer.duration === minutes * 60}>{minutes}</button>
         ))}
+        <button type="button" className={![25, 50, 90].includes(timer.duration / 60) ? 'active' : ''} aria-expanded={showCustom} aria-controls="custom-duration" onClick={() => {
+          setCustomMinutes(String(Math.round(timer.duration / 60)))
+          setCustomError('')
+          setShowCustom((current) => !current)
+        }}>自定义</button>
       </div>
+      {showCustom && (
+        <form id="custom-duration" className="custom-duration" onSubmit={submitCustom} noValidate>
+          <label htmlFor="custom-minutes">专注时长</label>
+          <div className="custom-duration-controls">
+            <input id="custom-minutes" type="number" min="1" max="240" step="1" inputMode="numeric" value={customMinutes} onChange={(event) => {
+              setCustomMinutes(event.target.value)
+              setCustomError('')
+            }} aria-invalid={Boolean(customError)} aria-describedby={customError ? 'custom-duration-error' : 'custom-duration-hint'} />
+            <span>分钟</span>
+            <button type="submit">设置</button>
+          </div>
+          <small id={customError ? 'custom-duration-error' : 'custom-duration-hint'} className={customError ? 'custom-duration-error' : ''}>{customError || '可设置 1–240 分钟'}</small>
+        </form>
+      )}
       <div className="timer-actions">
         <button className="icon-button" onClick={reset} aria-label="重置计时"><RefreshCcw size={18} /></button>
         <button className="primary-timer-button" onClick={timer.status === 'running' ? pause : start}>
@@ -411,7 +451,7 @@ export default function App() {
             <div className="eyebrow"><MoonStar size={14} /> 给忙碌的世界按下静音</div>
             <h1>在自然里，<br /><em>找回你的节奏。</em></h1>
             <p>选择一处风景，混合喜欢的声音。<br />接下来的时间，只留给当下。</p>
-            <button className="hero-cta" onClick={() => setFocusMode(true)}><Play size={18} fill="currentColor" /> 开始 50 分钟专注</button>
+            <button className="hero-cta" onClick={() => setFocusMode(true)}><Play size={18} fill="currentColor" /> 开始 {Math.round(timerControls.timer.duration / 60)} 分钟专注</button>
           </section>
 
           <section className="scene-section" aria-labelledby="scene-title">
